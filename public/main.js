@@ -96,7 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initBlurUp();
   initProductFilters();
   initLightbox();
-  initCarousel();
+  // initCarousel may have been removed; guard the call to avoid a runtime error
+  if (typeof initCarousel === 'function') initCarousel();
+  initCustomCursor();
 });
 
 // Scroll event listener for progress bar
@@ -185,6 +187,11 @@ function initProductFilters() {
   if (!toolbar) return;
   const cards = Array.from(document.querySelectorAll('[data-category]'));
 
+  // Initialize transition classes on cards
+  cards.forEach(card => {
+    card.classList.add('card-transition', 'card-visible');
+  });
+
   toolbar.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-filter]');
     if (!btn) return;
@@ -201,10 +208,22 @@ function initProductFilters() {
       b.classList.toggle('ring-gray-200', !isActive);
     });
 
+    // Show/hide by toggling 'hidden' + animation classes
     cards.forEach(card => {
       const cat = card.getAttribute('data-category');
       const show = filter === 'todos' || cat === filter;
-      card.style.display = show ? '' : 'none';
+      if (show) {
+        card.classList.remove('hidden', 'card-hidden');
+        // force reflow to allow transition
+        void card.offsetWidth;
+        card.classList.add('card-visible');
+      } else {
+        // start hide animation then set hidden after transition
+        card.classList.remove('card-visible');
+        card.classList.add('card-hidden');
+        // after transition, add hidden to remove from layout
+        setTimeout(() => card.classList.add('hidden'), 240);
+      }
     });
   });
 }
@@ -231,8 +250,8 @@ function initLightbox() {
     imgEl.src = '';
   }
 
-  // Clique/teclado nas imagens dos cards (Produtos e Destaques)
-  document.querySelectorAll('#produtos img, #destaques img').forEach(img => {
+  // Clique/teclado nas imagens dos produtos (lightbox)
+  document.querySelectorAll('#produtos img').forEach(img => {
     img.style.cursor = 'zoom-in';
     img.addEventListener('click', () => open(img.src, img.alt));
     img.addEventListener('keydown', (e) => {
@@ -249,13 +268,75 @@ function initLightbox() {
 }
 
 // Carousel simples com scroll-snap
-function initCarousel() {
-  const el = document.getElementById('destaquesCarousel');
-  const prev = document.getElementById('destaquesPrev');
-  const next = document.getElementById('destaquesNext');
-  if (!el || !prev || !next) return;
+// Carousel init removed (destaques carousel was removed from the page)
 
-  const step = () => Math.min(400, Math.max(240, el.clientWidth * 0.5));
-  prev.addEventListener('click', () => el.scrollBy({ left: -step(), behavior: 'smooth' }));
-  next.addEventListener('click', () => el.scrollBy({ left: step(), behavior: 'smooth' }));
+// Minimal, elegant custom cursor (dot + ring)
+function initCustomCursor() {
+  const finePointer = window.matchMedia('(pointer: fine)').matches;
+  if (!finePointer) return; // Keep native cursor on touch/coarse
+
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.body.classList.add('cursor-enhanced');
+
+  const dot = document.createElement('div');
+  dot.className = 'cursor-dot';
+  const ring = document.createElement('div');
+  ring.className = 'cursor-ring';
+  document.body.appendChild(ring);
+  document.body.appendChild(dot);
+
+  let mouseX = window.innerWidth / 2;
+  let mouseY = window.innerHeight / 2;
+  let ringX = mouseX;
+  let ringY = mouseY;
+  let ringScale = 1;
+  let rafId = null;
+
+  const lerp = (a, b, n) => (1 - n) * a + n * b;
+
+  function render() {
+    const speed = prefersReduced ? 1 : 0.18;
+    ringX = lerp(ringX, mouseX, speed);
+    ringY = lerp(ringY, mouseY, speed);
+
+    // Center elements on pointer
+    dot.style.transform = `translate3d(${mouseX - 3}px, ${mouseY - 3}px, 0)`;
+    ring.style.transform = `translate3d(${ringX - 14}px, ${ringY - 14}px, 0) scale(${ringScale})`;
+
+    rafId = requestAnimationFrame(render);
+  }
+
+  const show = () => { dot.style.opacity = '1'; ring.style.opacity = '1'; };
+  const hide = () => { dot.style.opacity = '0'; ring.style.opacity = '0'; };
+
+  document.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX; mouseY = e.clientY;
+    if (rafId === null) render();
+    show();
+  });
+  document.addEventListener('mouseenter', show);
+  document.addEventListener('mouseleave', hide);
+
+  document.addEventListener('mousedown', () => { ringScale = 0.9; });
+  document.addEventListener('mouseup', () => { ringScale = 1; });
+
+  const onInteractiveHover = (active) => {
+    ringScale = active ? 1.25 : 1;
+    ring.style.borderColor = active ? '#FA4A21' : '#FA4A21';
+    dot.style.background = active ? '#FA4A21' : '#003D95';
+  };
+
+  function handleHover(e) {
+    const isInteractive = !!e.target.closest('a, button, [role="button"], .btn-primary, .btn-secondary, input, textarea, select');
+    onInteractiveHover(isInteractive);
+  }
+
+  document.addEventListener('mouseover', handleHover);
+  document.addEventListener('focusin', handleHover);
+
+  // Hide cursor over iframes (can't track)
+  document.querySelectorAll('iframe').forEach((f) => {
+    f.addEventListener('mouseenter', hide);
+    f.addEventListener('mouseleave', show);
+  });
 }
