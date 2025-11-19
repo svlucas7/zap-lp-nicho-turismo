@@ -1,0 +1,50 @@
+﻿name: Convert PNG to AVIF
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '**/*.png'
+      - '.github/workflows/avif.yml'
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps (sharp + glob)
+        run: |
+          npm init -y
+          npm i sharp@^0.33 glob@^11
+      - name: Convert PNG  AVIF (sharp)
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const glob=require('glob');
+          const sharp=require('sharp');
+          (async ()=>{
+            const files=glob.sync('**/*.png',{nocase:true, ignore:['node_modules/**','**/dist/**','**/build/**']});
+            let ok=0, skip=0, err=0;
+            for (const f of files){
+              const out=f.replace(/\.png$/i,'.avif');
+              if (fs.existsSync(out)) { skip++; continue; }
+              try { await sharp(f).avif({quality:82,effort:4}).toFile(out); ok++; }
+              catch(e){ console.error('Fail', f, e.message); err++; }
+            }
+            console.log(JSON.stringify({ok,skip,err,total:files.length}));
+          })().catch(e=>{ console.error(e); process.exit(1); });
+          NODE
+      - name: Commit and push AVIF images
+        run: |
+          if git status --porcelain | grep -E "\\.avif$"; then
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            git add -A
+            git commit -m "chore: add AVIF assets from PNG (sharp)"
+            git push
+          else
+            echo "No AVIF changes to commit."
+          fi
